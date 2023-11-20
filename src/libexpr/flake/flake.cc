@@ -217,8 +217,15 @@ static Flake getFlake(
     // first place.
     auto unsafeFlakeDir = state.store->toRealPath(storePath) + "/" + lockedRef.subdir;
     auto unsafeFlakeFile = unsafeFlakeDir + "/flake.nix";
-    if (!pathExists(unsafeFlakeFile))
-        throw Error("source tree referenced by '%s' does not contain a '%s/flake.nix' file", lockedRef, lockedRef.subdir);
+    if (!pathExists(unsafeFlakeFile)) {
+        std::string errMsg = "source tree referenced by '%s' does not contain a '%s/flake.nix' file";
+        bool isGitFlake = resolvedRef.input.getType() == "git";
+        if (isGitFlake && pathExists(*originalRef.input.getSourcePath() + "/flake.nix")) {
+            errMsg += "\noriginal path %s exists; check that it is tracked in git, as flakes only copy tracked files";
+            throw Error(errMsg, lockedRef, lockedRef.subdir, *originalRef.input.getSourcePath() + "/flake.nix");
+        }
+        throw Error(errMsg, lockedRef, lockedRef.subdir);
+    }
 
     // Guard against symlink attacks.
     auto flakeDir = canonPath(unsafeFlakeDir, true);

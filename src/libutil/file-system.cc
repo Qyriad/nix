@@ -552,9 +552,7 @@ std::pair<AutoCloseFD, Path> createTempFile(const Path & prefix)
 void createSymlink(const Path & target, const Path & link)
 {
     if (symlink(target.c_str(), link.c_str())) {
-        auto v = std::make_shared<std::vector<Path>>();
-        v->push_back(link);
-        v->push_back(target);
+        auto v = std::make_shared<Paths>(Paths{link, target});
         throw SysError(v, "creating symlink from '%1%' to '%2%'", link, target);
     }
 }

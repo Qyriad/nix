@@ -95,32 +95,30 @@ DerivedPathsWithInfo InstallableFlake::toDerivedPaths()
 
     auto attrPath = attr->getAttrPathStr();
 
-    bool isDerivation;
     try {
-        isDerivation = attr->isDerivation();
-    } catch (SysError &e) {
+        // Evaluate here, instead of as a side effect of isDerivation(),
+        // for clarity of error handling.
+        attr->forceValue();
+    } catch (SysError & e) {
         e.addTrace({}, "in source tree referenced by %s", flakeRef);
-        if (flakeRef.input.getType() != "git" || e.errNo != ENOENT) {
+        bool isGit = flakeRef.input.getType() == "git";
+        if (!isGit || e.errNo != ENOENT || !flakeRef.input.getSourcePath() || e.referencedPaths->size() != 1) {
             throw;
         }
-        auto sourcePath = flakeRef.input.getSourcePath();
-        if (e.referencedPaths->size() != 1 || !sourcePath) {
-            throw;
-        }
+        auto sourcePath = *flakeRef.input.getSourcePath();
         auto baseStorePath = _lockedFlake->flake.storePath.to_string();
-        auto missingStorePath = e.referencedPaths->at(0);
+        auto missingStorePath = e.referencedPaths->front();
         auto targetOrigPath = missingStorePath;
-        auto withoutStartIdx = missingStorePath.find(baseStorePath);
-        auto without = targetOrigPath.erase(0, withoutStartIdx + baseStorePath.size());
-        targetOrigPath = *sourcePath + targetOrigPath;
+        auto without = targetOrigPath.erase(0, missingStorePath.find(baseStorePath) + baseStorePath.size());
+        targetOrigPath = sourcePath + targetOrigPath;
         if (pathExists(targetOrigPath)) {
             auto existingInfo = e.info();
-            existingInfo.msg = hintfmt("%1%\nnote: '%2%' found in original source; check that it is tracked in git, as flakes only copy tracked files", normaltxt(existingInfo.msg), targetOrigPath);
+            existingInfo.msg = hintfmt("%1%\n'%2%' found in original source; check that it is tracked in git, as flakes only copy tracked files", normaltxt(existingInfo.msg), targetOrigPath);
             throw Error(existingInfo);
         }
         throw;
     }
-    if (isDerivation) {
+    if (attr->isDerivation()) {
 
         // FIXME: use eval cache?
         auto v = attr->forceValue();

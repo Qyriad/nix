@@ -205,7 +205,7 @@ class SysError : public Error
 public:
     int errNo;
 
-    std::shared_ptr<std::vector<Path>> referencedPaths;
+    std::shared_ptr<Paths> referencedPaths;
 
     /** Convenience function that creates a SysError for a failed path operation.
      *
@@ -214,13 +214,11 @@ public:
     template<typename ...Args>
     static SysError createFromPathOp(const Path path, const Args & ... args)
     {
-        auto v = std::make_shared<std::vector<Path>>();
-        v->push_back(path);
-        return SysError(v, args ..., path);
+        return SysError(std::make_shared<Paths>(Paths{path}), args ..., path);
     }
 
     template<typename ...Args>
-    SysError(std::shared_ptr<std::vector<Path>> referencedPaths_, const Args & ... args)
+    SysError(std::shared_ptr<Paths> referencedPaths_, const Args & ... args)
         : SysError(errno, args ...)
     {
         referencedPaths = referencedPaths_;
