@@ -158,8 +158,9 @@ bool isDirOrInDir(std::string_view path, std::string_view dir)
 struct stat stat(const Path & path)
 {
     struct stat st;
-    if (stat(path.c_str(), &st))
-        throw SysError("getting status of '%1%'", path);
+    if (stat(path.c_str(), &st)) {
+        throw SysError::createFromPathOp(path, "getting status of '%1%'");
+    }
     return st;
 }
 
@@ -167,8 +168,9 @@ struct stat stat(const Path & path)
 struct stat lstat(const Path & path)
 {
     struct stat st;
-    if (lstat(path.c_str(), &st))
-        throw SysError("getting status of '%1%'", path);
+    if (lstat(path.c_str(), &st)) {
+        throw SysError::createFromPathOp(path, "getting status of '%1%'");
+    }
     return st;
 }
 
@@ -179,8 +181,9 @@ bool pathExists(const Path & path)
     struct stat st;
     res = lstat(path.c_str(), &st);
     if (!res) return true;
-    if (errno != ENOENT && errno != ENOTDIR)
-        throw SysError("getting status of %1%", path);
+    if (errno != ENOENT && errno != ENOTDIR) {
+        throw SysError::createFromPathOp(path, "getting status of %1%");
+    }
     return false;
 }
 
@@ -207,7 +210,7 @@ Path readLink(const Path & path)
             if (errno == EINVAL)
                 throw Error("'%1%' is not a symlink", path);
             else
-                throw SysError("reading symbolic link '%1%'", path);
+                throw SysError::createFromPathOp(path, "reading symbolic link '%1%'");
         else if (rlSize < bufSize)
             return std::string(buf.data(), rlSize);
     }
@@ -239,7 +242,7 @@ DirEntries readDirectory(DIR *dir, const Path & path)
 #endif
         );
     }
-    if (errno) throw SysError("reading directory '%1%'", path);
+    if (errno) throw SysError::createFromPathOp(path, "reading directory '%1%'");
 
     return entries;
 }
@@ -247,7 +250,7 @@ DirEntries readDirectory(DIR *dir, const Path & path)
 DirEntries readDirectory(const Path & path)
 {
     AutoCloseDir dir(opendir(path.c_str()));
-    if (!dir) throw SysError("opening directory '%1%'", path);
+    if (!dir) throw SysError::createFromPathOp(path, "opening directory '%1%'");
 
     return readDirectory(dir.get(), path);
 }
@@ -267,7 +270,7 @@ std::string readFile(const Path & path)
 {
     AutoCloseFD fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
     if (!fd)
-        throw SysError("opening file '%1%'", path);
+        throw SysError::createFromPathOp(path, "opening file '%1%'");
     return readFile(fd.get());
 }
 
@@ -276,7 +279,7 @@ void readFile(const Path & path, Sink & sink)
 {
     AutoCloseFD fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
     if (!fd)
-        throw SysError("opening file '%s'", path);
+        throw SysError::createFromPathOp(path, "opening file '%s'");
     drainFD(fd.get(), sink);
 }
 
@@ -285,7 +288,7 @@ void writeFile(const Path & path, std::string_view s, mode_t mode, bool sync)
 {
     AutoCloseFD fd = open(path.c_str(), O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, mode);
     if (!fd)
-        throw SysError("opening file '%1%'", path);
+        throw SysError::createFromPathOp(path, "opening file '%1%'");
     try {
         writeFull(fd.get(), s);
     } catch (Error & e) {
@@ -305,7 +308,7 @@ void writeFile(const Path & path, Source & source, mode_t mode, bool sync)
 {
     AutoCloseFD fd = open(path.c_str(), O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, mode);
     if (!fd)
-        throw SysError("opening file '%1%'", path);
+        throw SysError::createFromPathOp(path, "opening file '%1%'");
 
     std::vector<char> buf(64 * 1024);
 
@@ -332,7 +335,7 @@ void syncParent(const Path & path)
 {
     AutoCloseFD fd = open(dirOf(path).c_str(), O_RDONLY, 0);
     if (!fd)
-        throw SysError("opening file '%1%'", path);
+        throw SysError::createFromPathOp(path, "opening file '%1%'");
     fd.fsync();
 }
 
@@ -346,7 +349,7 @@ static void _deletePath(int parentfd, const Path & path, uint64_t & bytesFreed)
     struct stat st;
     if (fstatat(parentfd, name.c_str(), &st, AT_SYMLINK_NOFOLLOW) == -1) {
         if (errno == ENOENT) return;
-        throw SysError("getting status of '%1%'", path);
+        throw SysError::createFromPathOp(path, "getting status of '%1%'");
     }
 
     if (!S_ISDIR(st.st_mode)) {
@@ -378,15 +381,15 @@ static void _deletePath(int parentfd, const Path & path, uint64_t & bytesFreed)
         const auto PERM_MASK = S_IRUSR | S_IWUSR | S_IXUSR;
         if ((st.st_mode & PERM_MASK) != PERM_MASK) {
             if (fchmodat(parentfd, name.c_str(), st.st_mode | PERM_MASK, 0) == -1)
-                throw SysError("chmod '%1%'", path);
+                throw SysError::createFromPathOp(path, "chmod '%1%'");
         }
 
         int fd = openat(parentfd, path.c_str(), O_RDONLY);
         if (fd == -1)
-            throw SysError("opening directory '%1%'", path);
+            throw SysError::createFromPathOp(path, "opening directory '%1%'");
         AutoCloseDir dir(fdopendir(fd));
         if (!dir)
-            throw SysError("opening directory '%1%'", path);
+            throw SysError::createFromPathOp(path, "opening directory '%1%'");
         for (auto & i : readDirectory(dir.get(), path))
             _deletePath(dirfd(dir.get()), path + "/" + i.name, bytesFreed);
     }
@@ -394,7 +397,7 @@ static void _deletePath(int parentfd, const Path & path, uint64_t & bytesFreed)
     int flags = S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0;
     if (unlinkat(parentfd, name.c_str(), flags) == -1) {
         if (errno == ENOENT) return;
-        throw SysError("cannot unlink '%1%'", path);
+        throw SysError::createFromPathOp(path, "cannot unlink '%1%'");
     }
 }
 
@@ -407,7 +410,7 @@ static void _deletePath(const Path & path, uint64_t & bytesFreed)
     AutoCloseFD dirfd{open(dir.c_str(), O_RDONLY)};
     if (!dirfd) {
         if (errno == ENOENT) return;
-        throw SysError("opening directory '%1%'", path);
+        throw SysError::createFromPathOp(path, "opening directory '%1%'");
     }
 
     _deletePath(dirfd.get(), path, bytesFreed);
@@ -430,13 +433,13 @@ Paths createDirs(const Path & path)
     if (lstat(path.c_str(), &st) == -1) {
         created = createDirs(dirOf(path));
         if (mkdir(path.c_str(), 0777) == -1 && errno != EEXIST)
-            throw SysError("creating directory '%1%'", path);
+            throw SysError::createFromPathOp(path, "creating directory '%1%'");
         st = lstat(path);
         created.push_back(path);
     }
 
     if (S_ISLNK(st.st_mode) && stat(path.c_str(), &st) == -1)
-        throw SysError("statting symlink '%1%'", path);
+        throw SysError::createFromPathOp(path, "statting symlink '%1%'");
 
     if (!S_ISDIR(st.st_mode)) throw Error("'%1%' is not a directory", path);
 
@@ -470,7 +473,7 @@ AutoDelete::~AutoDelete()
                 deletePath(path);
             else {
                 if (remove(path.c_str()) == -1)
-                    throw SysError("cannot unlink '%1%'", path);
+                    throw SysError::createFromPathOp(path, "cannot unlink '%1%'");
             }
         }
     } catch (...) {
@@ -524,12 +527,12 @@ Path createTempDir(const Path & tmpRoot, const Path & prefix,
                "wheel", then "tar" will fail to unpack archives that
                have the setgid bit set on directories. */
             if (chown(tmpDir.c_str(), (uid_t) -1, getegid()) != 0)
-                throw SysError("setting group of directory '%1%'", tmpDir);
+                throw SysError::createFromPathOp(tmpDir, "setting group of directory '%1%'");
 #endif
             return tmpDir;
         }
         if (errno != EEXIST)
-            throw SysError("creating directory '%1%'", tmpDir);
+            throw SysError::createFromPathOp(tmpDir, "creating directory '%1%'");
     }
 }
 
@@ -541,15 +544,19 @@ std::pair<AutoCloseFD, Path> createTempFile(const Path & prefix)
     // FIXME: use O_TMPFILE.
     AutoCloseFD fd(mkstemp((char *) tmpl.c_str()));
     if (!fd)
-        throw SysError("creating temporary file '%s'", tmpl);
+        throw SysError::createFromPathOp(tmpl, "creating temporary file '%s'");
     closeOnExec(fd.get());
     return {std::move(fd), tmpl};
 }
 
 void createSymlink(const Path & target, const Path & link)
 {
-    if (symlink(target.c_str(), link.c_str()))
-        throw SysError("creating symlink from '%1%' to '%2%'", link, target);
+    if (symlink(target.c_str(), link.c_str())) {
+        auto v = std::make_shared<std::vector<Path>>();
+        v->push_back(link);
+        v->push_back(target);
+        throw SysError(v, "creating symlink from '%1%' to '%2%'", link, target);
+    }
 }
 
 void replaceSymlink(const Path & target, const Path & link)
@@ -582,7 +589,7 @@ void setWriteTime(const fs::path & p, const struct stat & st)
         .tv_usec = 0,
     };
     if (lutimes(p.c_str(), times) != 0)
-        throw SysError("changing modification time of '%s'", p);
+        throw SysError::createFromPathOp(p.string(), "changing modification time of '%s'");
 }
 
 void copy(const fs::directory_entry & from, const fs::path & to, bool andDelete)

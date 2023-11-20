@@ -205,6 +205,27 @@ class SysError : public Error
 public:
     int errNo;
 
+    std::shared_ptr<std::vector<Path>> referencedPaths;
+
+    /** Convenience function that creates a SysError for a failed path operation.
+     *
+     * The provided path is added as the first format string argument.
+     */
+    template<typename ...Args>
+    static SysError createFromPathOp(const Path path, const Args & ... args)
+    {
+        auto v = std::make_shared<std::vector<Path>>();
+        v->push_back(path);
+        return SysError(v, args ..., path);
+    }
+
+    template<typename ...Args>
+    SysError(std::shared_ptr<std::vector<Path>> referencedPaths_, const Args & ... args)
+        : SysError(errno, args ...)
+    {
+        referencedPaths = referencedPaths_;
+    }
+
     template<typename... Args>
     SysError(int errNo_, const Args & ... args)
         : Error("")
