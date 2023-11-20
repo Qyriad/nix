@@ -9,10 +9,15 @@
 
 #include <functional>
 #include <map>
+#include <string>
 #include <sstream>
+#include <string_view>
+#include <source_location>
 #include <optional>
 
 namespace nix {
+
+void qlog(std::string_view const msg, std::source_location location = std::source_location::current());
 
 void initLibUtil();
 

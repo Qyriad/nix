@@ -4,11 +4,62 @@
 #include <array>
 #include <cctype>
 #include <iostream>
+#include <sstream>
 #include <grp.h>
 #include <regex>
 
 
 namespace nix {
+
+using std::string_view, std::stringstream, std::cerr, std::cout;
+
+constexpr std::string_view remove_prefix(std::string_view sv, std::string_view prefix) noexcept
+{
+    if (sv.starts_with(prefix)) {
+        return sv.substr(prefix.size());
+    }
+    return sv;
+}
+
+constexpr std::string_view remove_suffix(std::string_view sv, std::string_view suffix) noexcept
+{
+    if (sv.ends_with(suffix)) {
+        return sv.substr(0, sv.size() - suffix.size());
+    }
+    return sv;
+}
+
+std::string without(std::string_view sv, std::string_view substr)
+{
+    std::string s(sv);
+    using idx_t = decltype(s)::size_type;
+    for (idx_t substr_pos = s.find(substr); substr_pos != decltype(s)::npos; substr_pos = s.find(substr)) {
+        s.erase(substr_pos, substr.size());
+    }
+    return s;
+}
+
+void qlog(string_view const msg, std::source_location location)
+{
+    std::string func = location.function_name();
+    auto prefixes = { "virtual ", "void ", "nix::" };
+    for (auto &&prefix : prefixes) {
+        func = remove_prefix(func, prefix);
+    }
+    func = without(func, "nix::");
+
+    // Delete the arguments inside the parentheses.
+    using idx_t = decltype(func)::size_type;
+    idx_t start_paren = func.find("(");
+    idx_t end_paren = func.find(")");
+    func.erase(start_paren + 1, (end_paren - start_paren) - 1);
+
+    std::string sep = "\t";
+    if (func.size() < 25) {
+        sep += "\t";
+    }
+    cerr << "\x1b[1mqyriad:\x1b[22m \x1b[38;5;217m" << func << "\x1b[0m:" << sep << msg << "\n";
+}
 
 void initLibUtil() {
     // Check that exception handling works. Exception handling has been observed
