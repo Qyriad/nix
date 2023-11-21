@@ -101,7 +101,7 @@ DerivedPathsWithInfo InstallableFlake::toDerivedPaths()
         attr->forceValue();
     } catch (SysError & e) {
         e.addTrace({}, "in source tree referenced by %s", flakeRef);
-        bool isGit = flakeRef.input.getType() == "git";
+        auto isGit = flakeRef.input.getType() == "git";
         bool isNotFound = e.errNo == ENOENT;
         if (!isGit || !isNotFound || !flakeRef.input.getSourcePath() || e.referencedPaths->size() != 1) {
             // If this flake isn't a git flake or doesn't have a source path,
@@ -114,11 +114,11 @@ DerivedPathsWithInfo InstallableFlake::toDerivedPaths()
         // Get the path of the missing file relative to the flake source tree,
         // instead of the Nix store.
 
-        // The full path that wasn't found.
+        // The full path that got ENOENT'd.
         auto missingStorePath = e.referencedPaths->front();
         // Directory of the original flake.nix.
         auto flakeSourceDir = *flakeRef.input.getSourcePath();
-        // Nix store directory containing the copied flake.
+        // Nix store directory containing the fetched flake.
         auto flakeStoreDir = _lockedFlake->flake.storePath.to_string();
         // This'll strip the path to the store (e.g. /nix/store), as well as
         // the path in the store (e.g. c8kjkvxfq9pfwd4832ishyl2mpw4l58y-source).
