@@ -131,7 +131,7 @@ DerivedPathsWithInfo InstallableFlake::toDerivedPaths()
         }
         throw;
     }
-    if (attr->isDerivation()) {
+    if (!attr->isDerivation()) {
 
         // FIXME: use eval cache?
         auto v = attr->forceValue();
