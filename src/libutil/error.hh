@@ -224,6 +224,14 @@ public:
         referencedPaths = referencedPaths_;
     }
 
+    template<typename ...Args>
+    SysError(int errNo_, std::shared_ptr<Paths> referencedPaths_, ErrorInfo && e)
+        : Error(std::move(e))
+    {
+        errNo = errNo_;
+        referencedPaths = referencedPaths_;
+    }
+
     template<typename... Args>
     SysError(int errNo_, const Args & ... args)
         : Error("")

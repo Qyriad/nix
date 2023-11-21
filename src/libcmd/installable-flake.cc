@@ -102,19 +102,32 @@ DerivedPathsWithInfo InstallableFlake::toDerivedPaths()
     } catch (SysError & e) {
         e.addTrace({}, "in source tree referenced by %s", flakeRef);
         bool isGit = flakeRef.input.getType() == "git";
-        if (!isGit || e.errNo != ENOENT || !flakeRef.input.getSourcePath() || e.referencedPaths->size() != 1) {
+        bool isNotFound = e.errNo == ENOENT;
+        if (!isGit || !isNotFound || !flakeRef.input.getSourcePath() || e.referencedPaths->size() != 1) {
+            // If this flake isn't a git flake or doesn't have a source path,
+            // or if this error is something other ENOENT, or if ENOENT is
+            // about more than one path, then we don't have any helpful
+            // hints to add. Rethrow.
             throw;
         }
-        auto sourcePath = *flakeRef.input.getSourcePath();
-        auto baseStorePath = _lockedFlake->flake.storePath.to_string();
+
+        // Get the path of the missing file relative to the flake source tree,
+        // instead of the Nix store.
+
+        // The full path that wasn't found.
         auto missingStorePath = e.referencedPaths->front();
-        auto targetOrigPath = missingStorePath;
-        auto without = targetOrigPath.erase(0, missingStorePath.find(baseStorePath) + baseStorePath.size());
-        targetOrigPath = sourcePath + targetOrigPath;
-        if (pathExists(targetOrigPath)) {
+        // Directory of the original flake.nix.
+        auto flakeSourceDir = *flakeRef.input.getSourcePath();
+        // Nix store directory containing the copied flake.
+        auto flakeStoreDir = _lockedFlake->flake.storePath.to_string();
+        // This'll strip the path to the store (e.g. /nix/store), as well as
+        // the path in the store (e.g. c8kjkvxfq9pfwd4832ishyl2mpw4l58y-source).
+        auto amountToStrip = missingStorePath.find(flakeStoreDir) + flakeStoreDir.size();
+        auto originalSourcePath = flakeSourceDir + missingStorePath.substr(amountToStrip);
+        if (pathExists(originalSourcePath)) {
             auto existingInfo = e.info();
-            existingInfo.msg = hintfmt("%1%\n'%2%' found in original source; check that it is tracked in git, as flakes only copy tracked files", normaltxt(existingInfo.msg), targetOrigPath);
-            throw Error(existingInfo);
+            existingInfo.msg = hintfmt("%1%\n'%2%' found in original source; check that it is tracked in git, as flakes only copy tracked files", normaltxt(existingInfo.msg), originalSourcePath);
+            throw SysError(e.errNo, e.referencedPaths, std::move(existingInfo));
         }
         throw;
     }
