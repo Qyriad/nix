@@ -11,13 +11,107 @@
 #include <map>
 #include <string>
 #include <sstream>
+#include <iostream>
 #include <string_view>
 #include <source_location>
 #include <optional>
+#include <concepts>
+#include <type_traits>
 
 namespace nix {
 
-void qlog(std::string_view const msg, std::source_location location = std::source_location::current());
+constexpr std::string without(std::string_view const sv, std::string_view const substr)
+{
+    std::string s{sv};
+    using idx_t = decltype(s)::size_type;
+    for (idx_t substr_pos = s.find(substr); substr_pos != decltype(s)::npos; substr_pos = s.find(substr)) {
+        s.erase(substr_pos, substr.size());
+    }
+    return s;
+}
+
+constexpr std::string_view remove_prefix(std::string_view sv, std::string_view prefix) noexcept
+{
+    if (sv.starts_with(prefix)) {
+        return sv.substr(prefix.size());
+    }
+    return sv;
+}
+
+constexpr std::string_view remove_suffix(std::string_view sv, std::string_view suffix) noexcept
+{
+    if (sv.ends_with(suffix)) {
+        return sv.substr(0, sv.size() - suffix.size());
+    }
+    return sv;
+}
+
+
+constexpr std::string without(std::string_view sv, std::string_view substr);
+
+template <typename T>
+concept ToString = requires(T v) {
+    std::to_string(v);
+};
+
+template <typename T>
+concept StreamInsert = requires(std::ostream && os, T const v) {
+    os << v;
+};
+
+template <typename T>
+concept Formattable = ToString<T> || StreamInsert<T> || std::convertible_to<T, std::string const &&>;
+
+template <typename T>
+concept FormatCallable = requires(T && v) {
+    { v() } -> Formattable;
+};
+
+template <typename T>
+requires Formattable<T> || FormatCallable<T>
+auto qfmt(T s) -> std::string
+{
+    if constexpr (FormatCallable<T>) {
+        return qfmt(s());
+    }
+    if constexpr (ToString<T>) {
+        return std::to_string(s);
+    }
+    if constexpr (StreamInsert<T>) {
+        std::ostringstream ss;
+        ss << s;
+        return ss.str();
+    }
+    if constexpr (std::convertible_to<T, std::string>) {
+        return static_cast<std::string>(s);
+    }
+}
+
+template <typename MsgT>
+requires Formattable<MsgT> || FormatCallable<MsgT>
+void qlog(MsgT && message, std::source_location location = std::source_location::current())
+{
+    auto msg = qfmt(message);
+    std::string func = location.function_name();
+    auto prefixes = { "virtual ", "void ", "nix::" };
+    for (auto &&prefix : prefixes) {
+        func = remove_prefix(func, prefix);
+    }
+    func = without(func, "nix::");
+
+    // Delete the arguments inside the parentheses.
+    using idx_t = decltype(func)::size_type;
+    idx_t start_paren = func.find("(");
+    idx_t end_paren = func.find(")");
+    func.erase(start_paren + 1, (end_paren - start_paren) - 1);
+
+    std::string sep = "\t";
+    if (func.size() < 25) {
+        sep += "\t";
+    }
+    std::cerr << "\x1b[1mqyriad:\x1b[22m \x1b[38;5;217m" << func << "\x1b[0m:" << sep << msg << "\n";
+
+}
 
 void initLibUtil();
 
